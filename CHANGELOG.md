@@ -3,6 +3,44 @@
 All notable changes to hermes-openai-proxy are documented here. Versions
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Streaming `[DONE]` synthesis when upstream sends a single chunk with
+  both content and `finish_reason: "stop"`.** MiniMax M2.7 (and sometimes
+  M3) emit a single SSE chunk at end-of-stream containing BOTH
+  `choices[0].delta.content` and `choices[0].finish_reason: "stop"`.
+  The streaming filter had an `if visible: ... elif finish_reason: ...`
+  chain that only set `saw_finish_reason` in the `elif` branch. When the
+  chunk had both, the `elif` was skipped, the `[DONE]` terminator was
+  never synthesized, and well-behaved clients (curl, OpenAI SDK,
+  LangChain) hung until they hit their own timeout. Discovered during
+  the first install on gamemaster (macOS, Apple Silicon, Darwin 25.5.0),
+  where rpgm's MiniMax-M2.7 doesn't emit a trailing `[DONE]`. Eru's
+  MiniMax-M3 emits it correctly, which masked the bug locally. Fix:
+  track `saw_finish_reason` independently of the content branch.
+
+### Changed
+
+- Test fixture `tests/test_interactive.py`: drop explicit `max_tokens` in
+  tests 5 (multi-turn) and 6 (reasoning-stripped). Thinking-mode
+  models (MiniMax M3 / M2.7) sometimes consume the entire budget on
+  reasoning, leaving zero tokens for visible content. Letting the
+  upstream set the default produces reliable results across both
+  reasoning tiers.
+
+### Added
+
+- `MANIFEST.in` to ensure source distribution includes README, LICENSE,
+  CHANGELOG.md, .env.example, examples/, docs/, and tests/. Previous
+  installs via `pip install git+...` did not include these files; tests
+  had to be transferred manually.
+- `python-dotenv>=1.0` to `requirements.txt` (was previously a
+  transitive dependency that came in via starlette, but every fresh
+  install relies on it -- declaring it explicitly makes the intent
+  clear).
+
 ## [0.1.0] - 2026-07-05
 
 ### Added

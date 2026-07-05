@@ -219,7 +219,9 @@ def test_5_multi_turn(model_id: str) -> bool:
                 {"role": "assistant", "content": "Got it, your favorite color is blue."},
                 {"role": "user", "content": "What is my favorite color? Reply in 2 words."},
             ],
-            "max_tokens": 30,
+            # Omit max_tokens -- thinking-mode models (MiniMax M3 / M2.7) sometimes
+            # consume the entire budget on reasoning. Letting the upstream set the
+            # default ensures we get visible content even on older reasoning models.
             "temperature": 0,
         },
         timeout=TIMEOUT,
@@ -242,7 +244,7 @@ def test_6_reasoning_stripped(model_id: str) -> bool:
         json={
             "model": model_id,
             "messages": [{"role": "user", "content": "What is 2+2? Reply in one word."}],
-            "max_tokens": 50,
+            # Omit max_tokens -- thinking-mode models need the proxy's default.
             "stream": True,
         },
         timeout=TIMEOUT,
@@ -268,7 +270,7 @@ def test_6_reasoning_stripped(model_id: str) -> bool:
         json={
             "model": model_id,
             "messages": [{"role": "user", "content": "What is 2+2? Reply in one word."}],
-            "max_tokens": 50,
+            "max_tokens": 200,
         },
         timeout=TIMEOUT,
     )
