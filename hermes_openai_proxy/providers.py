@@ -18,9 +18,7 @@ None -- credentials aren't required for localhost endpoints.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -30,14 +28,14 @@ class Provider:
     name: str  # canonical lowercase name used in the proxy
     base_url: str  # OpenAI-compatible base URL (or anthropic native)
     style: str  # "openai" or "anthropic"
-    env_base_var: Optional[str] = None  # env var that can override base_url
-    env_key_var: Optional[str] = None  # env var that holds the API key
-    models: List[str] = field(default_factory=list)
+    env_base_var: str | None = None  # env var that can override base_url
+    env_key_var: str | None = None  # env var that holds the API key
+    models: list[str] = field(default_factory=list)
 
 
 # -- Provider catalog ------------------------------------------------------
 
-PROVIDERS: Dict[str, Provider] = {
+PROVIDERS: dict[str, Provider] = {
     "minimax": Provider(
         name="minimax",
         base_url="https://api.minimax.io/v1",
@@ -213,14 +211,14 @@ def resolve_provider(name: str, env: dict) -> Provider:
     return p
 
 
-def list_available_models(creds: Dict[str, str]) -> List[Tuple[str, Provider, str]]:
+def list_available_models(creds: dict[str, str]) -> list[tuple[str, Provider, str]]:
     """Return [(model_id, provider, model_id_without_provider_prefix), ...]
     for every provider that has credentials AND every model in its allowlist.
 
     Only includes providers in PROVIDERS that have credentials in `creds`.
     """
-    out: List[Tuple[str, Provider, str]] = []
-    for prov_name, has_creds in creds.items():
+    out: list[tuple[str, Provider, str]] = []
+    for prov_name, _has_creds in creds.items():
         prov = PROVIDERS.get(prov_name.lower())
         if prov is None:
             continue
@@ -233,7 +231,7 @@ def list_available_models(creds: Dict[str, str]) -> List[Tuple[str, Provider, st
     return out
 
 
-def parse_model_id(model_id: str) -> Tuple[str, str]:
+def parse_model_id(model_id: str) -> tuple[str, str]:
     """Split 'provider/model' -> (provider, model). Returns ('<provider>',
     '<model>') even if no slash present (caller can detect)."""
     if "/" in model_id:

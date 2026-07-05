@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Tuple
 
 
 def hermes_home() -> Path:
@@ -22,7 +21,7 @@ def config_path() -> Path:
     return hermes_home() / "config.yaml"
 
 
-def read_default_model() -> Tuple[str, str]:
+def read_default_model() -> tuple[str, str]:
     """Return (model_id_with_provider_prefix, provider_name).
 
     Mirrors ask.py's precedence rules. Order:
@@ -56,7 +55,7 @@ def read_default_model() -> Tuple[str, str]:
     # skip over any sibling keys (`model.default`, `model.base_url`, ...)
     # before reaching the desired key, so the regex matches the key no
     # matter its order in the YAML block.
-    def grab_scalar(path: Tuple[str, ...]) -> str:
+    def grab_scalar(path: tuple[str, ...]) -> str:
         if len(path) == 1:
             r = re.search(
                 rf"^{re.escape(path[0])}:\s*(\S+)\s*$", text, re.MULTILINE

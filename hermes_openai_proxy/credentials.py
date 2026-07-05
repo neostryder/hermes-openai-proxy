@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Dict
 
 
 def hermes_home() -> Path:
@@ -23,14 +22,14 @@ def env_path() -> Path:
 _ENV_LINE_RE = re.compile(r"^([A-Z_][A-Z0-9_]*)=(.*)$")
 
 
-def load_env() -> Dict[str, str]:
+def load_env() -> dict[str, str]:
     """Parse .env into a dict. Comments (lines starting with '#') and blank
     lines are skipped. Values wrapped in single or double quotes have the
     quotes stripped."""
     p = env_path()
     if not p.exists():
         return {}
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     try:
         text = p.read_text(encoding="utf-8", errors="replace")
     except Exception:
@@ -49,12 +48,12 @@ def load_env() -> Dict[str, str]:
     return out
 
 
-def find_credentials() -> Dict[str, str]:
+def find_credentials() -> dict[str, str]:
     """Walk the .env dict and return {provider: api_key} for every provider
     that has a key set AND a non-empty value. Also includes the raw base
     URLs for each provider via a parallel dict (see providers.py)."""
     env = load_env()
-    creds: Dict[str, str] = {}
+    creds: dict[str, str] = {}
     mapping = {
         "minimax": "MINIMAX_API_KEY",
         "minimax_cn": "MINIMAX_CN_API_KEY",

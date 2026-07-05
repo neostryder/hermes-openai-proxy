@@ -31,21 +31,21 @@ persona / skills context. What you send in is what the model sees.
   only support the older spec.
 - Synthesizes a `tools` array from observed tool calls when a client
   (LangChain, Nanobrowser) omits it on subsequent multi-turn turns.
-
 ## Quick start
 
-Install:
+Install directly from the repo (no PyPI release yet — the project is
+Windows-tested, macOS/Linux paths coded but unverified):
 
 ```bash
-pip install hermes-openai-proxy
+pip install git+https://github.com/neostryder/hermes-openai-proxy.git
 ```
 
-Or from source:
+Or, if you want to hack on the proxy itself, clone and install editable:
 
 ```bash
 git clone https://github.com/neostryder/hermes-openai-proxy.git
 cd hermes-openai-proxy
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 Make sure your Hermes `.env` has at least one provider credential:

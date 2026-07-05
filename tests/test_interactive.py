@@ -6,13 +6,20 @@ Run against a live proxy at http://127.0.0.1:8765 (default). Verifies:
   3. Streaming works (SSE chunks arrive in order, [DONE] terminates)
   4. The proxy does NOT inject any system prompt (zero-stock test)
   5. Multi-turn conversation passes through verbatim
-  6. Reasoning blocks stripped (MiniMax M3 specifically)
-  7. Error cases: bad model, missing creds, malformed body
-  8. Legacy /v1/completions shim works
+  6. Reasoning blocks stripped (thinking-mode models)
+  7. Legacy /v1/completions shim works
+  8. Error cases: bad model, missing creds, malformed body, unicode
 
 Usage:
     python tests/test_interactive.py
+    python tests/test_interactive.py --model openai/gpt-4o-mini
     python tests/test_interactive.py --model minimax/MiniMax-M3 --only 2,3
+
+If --model is omitted, the script resolves the test target from the
+proxy's /healthz endpoint (default_model field), or if that's empty,
+the first entry in /v1/models. This means a contributor with any
+credentialed provider can run the full suite without setting
+HERMES_TEST_MODEL.
 """
 
 import argparse
@@ -20,7 +27,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import httpx
 
@@ -41,7 +48,7 @@ def _print(label: str, value: Any) -> None:
     print(f"  {label}: {value}")
 
 
-def test_1_models_list() -> Dict[str, Any]:
+def test_1_models_list() -> dict[str, Any]:
     hr("1. /v1/models -- structure + completeness")
     r = httpx.get(f"{PROXY}/v1/models", timeout=TIMEOUT)
     assert r.status_code == 200, f"got {r.status_code}"
@@ -52,7 +59,7 @@ def test_1_models_list() -> Dict[str, Any]:
         assert "id" in m
         assert "/" in m["id"], f"model id missing provider prefix: {m}"
         assert m["object"] == "model"
-    by_prov: Dict[str, int] = {}
+    by_prov: dict[str, int] = {}
     for m in j["data"]:
         by_prov[m["owned_by"]] = by_prov.get(m["owned_by"], 0) + 1
     _print("model_count", len(j["data"]))
@@ -60,15 +67,15 @@ def test_1_models_list() -> Dict[str, Any]:
     return j
 
 
-def test_2_each_provider_one_model(models: Dict[str, Any], only: List[str]) -> List[Tuple[str, bool, str]]:
+def test_2_each_provider_one_model(models: dict[str, Any], only: list[str]) -> list[tuple[str, bool, str]]:
     hr("2. Each credentialed provider -- one real chat completion per provider")
     # Pick one model per provider
-    by_prov: Dict[str, str] = {}
+    by_prov: dict[str, str] = {}
     for m in models["data"]:
         p = m["owned_by"]
         if p not in by_prov:
             by_prov[p] = m["id"]
-    results: List[Tuple[str, bool, str]] = []
+    results: list[tuple[str, bool, str]] = []
     for prov, model_id in sorted(by_prov.items()):
         if only and prov not in only and model_id not in only:
             continue
@@ -125,8 +132,8 @@ def test_2_each_provider_one_model(models: Dict[str, Any], only: List[str]) -> L
 
 def test_3_streaming(model_id: str) -> bool:
     hr(f"3. Streaming (SSE) -- model={model_id}")
-    print(f"  sending stream request...")
-    chunks: List[Dict[str, Any]] = []
+    print("  sending stream request...")
+    chunks: list[dict[str, Any]] = []
     done_seen = False
     t0 = time.time()
     with httpx.stream(
@@ -228,7 +235,7 @@ def test_5_multi_turn(model_id: str) -> bool:
 def test_6_reasoning_stripped(model_id: str) -> bool:
     hr(f"6. Reasoning blocks stripped -- model={model_id}")
     # Streaming version: collect all visible chunks
-    chunks: List[str] = []
+    chunks: list[str] = []
     with httpx.stream(
         "POST",
         f"{PROXY}/v1/chat/completions",
@@ -306,7 +313,7 @@ def test_7_legacy_completions(model_id: str) -> bool:
     return ok
 
 
-def test_8_error_cases() -> bool:
+def test_8_error_cases(model_id: str = "") -> bool:
     hr("8. Error cases")
     cases_pass = 0
     cases_total = 0
@@ -390,7 +397,7 @@ def test_8_error_cases() -> bool:
     r = httpx.post(
         f"{PROXY}/v1/chat/completions",
         json={
-            "model": "minimax/MiniMax-M3",
+            "model": model_id or "minimax/MiniMax-M3",
             "messages": [
                 {"role": "system", "content": "You handle any language. Reply briefly."},
                 {"role": "user", "content": "こんにちは! Comment ça va? 你好? مرحبا?"},
@@ -416,24 +423,43 @@ def test_8_error_cases() -> bool:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="minimax/MiniMax-M3",
-                        help="default model for single-model tests")
+    parser.add_argument("--model", default=None,
+                        help="default model for single-model tests. "
+                             "If omitted, the proxy's /healthz default is used; "
+                             "if that is empty, the first model from /v1/models.")
     parser.add_argument("--only", default=None,
                         help="comma-separated list of providers to test (e.g. 'minimax,openai')")
     args = parser.parse_args()
 
     only = args.only.split(",") if args.only else []
 
-    results: List[Tuple[str, bool]] = []
+    results: list[tuple[str, bool]] = []
 
-    # 1
+    # 1 -- also resolves our default model from /healthz if not supplied
     try:
         models = test_1_models_list()
+        if args.model is None:
+            try:
+                h = httpx.get(f"{PROXY}/healthz", timeout=TIMEOUT).json()
+                default_from_proxy = h.get("default_model", "")
+                if default_from_proxy and any(
+                    m["id"] == default_from_proxy for m in models["data"]
+                ):
+                    args.model = default_from_proxy
+                elif models["data"]:
+                    # Proxy had no usable default; pick first available model.
+                    args.model = models["data"][0]["id"]
+                else:
+                    args.model = ""
+            except Exception:
+                args.model = models["data"][0]["id"] if models["data"] else ""
         results.append(("1. /v1/models structure", True))
     except AssertionError as e:
         print(f"  FAIL: {e}")
         results.append(("1. /v1/models structure", False))
         return
+
+    print(f"  (default model for single-model tests: {args.model!r})")
 
     # 2
     try:
@@ -453,7 +479,7 @@ def main():
     test_7_legacy_completions(args.model) and results.append(("7. legacy /v1/completions", True))
 
     # 8
-    test_8_error_cases() and results.append(("8. error cases", True))
+    test_8_error_cases(args.model) and results.append(("8. error cases", True))
 
     # Summary
     hr("SUMMARY")

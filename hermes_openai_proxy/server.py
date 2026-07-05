@@ -13,26 +13,26 @@ everything in the prompt.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from . import __version__
 from .config import read_default_model
 from .credentials import find_credentials, load_env
-from .providers import PROVIDERS, list_available_models, parse_model_id, resolve_provider
+from .providers import list_available_models, parse_model_id, resolve_provider
 from .reasoning import ReasoningFilter, strip_reasoning
 
 log = logging.getLogger("hermes-openai-proxy")
@@ -67,11 +67,11 @@ app.add_middleware(
 DEFAULT_MODEL_ID, DEFAULT_PROVIDER = read_default_model()
 
 
-def _refresh_models() -> List[Dict[str, Any]]:
+def _refresh_models() -> list[dict[str, Any]]:
     """Build the OpenAI /v1/models response payload from current creds."""
     creds = find_credentials()
     rows = list_available_models(creds)
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for model_id, prov, _ in rows:
         out.append(
             {
@@ -92,7 +92,7 @@ def _refresh_models() -> List[Dict[str, Any]]:
 # content blocks (newer OpenAI multimodal spec: [{"type": "text", "text": "..."},
 # {"type": "image_url", "image_url": {"url": "data:..."}}]). We accept both
 # and normalize to a list internally before sending to the upstream provider.
-ContentPart = Dict[str, Any]
+ContentPart = dict[str, Any]
 
 
 class ChatMessage(BaseModel):
@@ -105,31 +105,31 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionsRequest(BaseModel):
     model: str = ""  # Allow empty; we fall through to default
-    messages: List[ChatMessage] = []  # Allow empty for diagnostic logging
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    top_p: Optional[float] = None
-    stream: Optional[bool] = False
-    stop: Optional[List[str]] = None
+    messages: list[ChatMessage] = []  # Allow empty for diagnostic logging
+    temperature: float | None = None
+    max_tokens: int | None = None
+    top_p: float | None = None
+    stream: bool | None = False
+    stop: list[str] | None = None
     # OpenAI-compatible tool calling. Brave Leo sends `tools` when the user
     # enables Tool Support in the BYOM panel. Pass through to upstreams
     # that support it (MiniMax M3, OpenAI, etc.); ignore silently otherwise.
-    tools: Optional[List[Dict[str, Any]]] = None
-    tool_choice: Optional[Any] = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: Any | None = None
     # OpenAI-compatible structured output. Many clients (LangChain's
     # withStructuredOutput, OpenAI SDK's chat.completions.parse) send
     # `response_format: {type: json_schema, ...}`. We accept it here and
     # translate to {type: json_object} + system-prompt hint before sending
     # to upstreams that don't support json_schema (e.g. MiniMax M3).
-    response_format: Optional[Dict[str, Any]] = None
+    response_format: dict[str, Any] | None = None
 
 
 class LegacyCompletionsRequest(BaseModel):
     model: str = ""
     prompt: str = ""
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    stream: Optional[bool] = False
+    temperature: float | None = None
+    max_tokens: int | None = None
+    stream: bool | None = False
 
 
 # Default max_tokens for requests that don't specify one. Must be high enough
@@ -230,7 +230,7 @@ def normalize_response_format(payload: dict) -> None:
     log.info("normalized json_schema -> json_object; schema_hint length=%d", len(schema_hint))
 
 
-def _synthesize_tools_from_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _synthesize_tools_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """If a request has assistant tool_calls or role:"tool" messages but no
     `tools` array, build a minimal tools array covering every function name
     observed in the conversation. MiniMax M3 and similar providers require
@@ -249,8 +249,8 @@ def _synthesize_tools_from_messages(messages: List[Dict[str, Any]]) -> List[Dict
     Each entry has permissive parameters -- the client already validated
     the schema; we're just satisfying upstream bookkeeping.
     """
-    seen_names: Dict[str, Dict[str, Any]] = {}
-    seen_ids: List[str] = []
+    seen_names: dict[str, dict[str, Any]] = {}
+    seen_ids: list[str] = []
     for m in messages or []:
         for tc in m.get("tool_calls") or []:
             fn = (tc.get("function") or {}).get("name")
@@ -268,7 +268,7 @@ def _synthesize_tools_from_messages(messages: List[Dict[str, Any]]) -> List[Dict
                 seen_ids.append(tid)
     # Emit per-id copies for MiniMax's id-based matching, while keeping
     # the name-only base entries for providers that key by name.
-    out: List[Dict[str, Any]] = list(seen_names.values())
+    out: list[dict[str, Any]] = list(seen_names.values())
     # Deduplicate ids and cap at 32 to keep the synthesized array bounded
     # for very long multi-turn conversations. MiniMax only needs each id
     # once; duplicates are harmless but waste tokens.
@@ -326,7 +326,7 @@ async def not_found_handler(request: Request, exc) -> JSONResponse:
 
 
 @app.get("/healthz")
-def healthz() -> Dict[str, Any]:
+def healthz() -> dict[str, Any]:
     creds = find_credentials()
     return {
         "status": "ok",
@@ -338,7 +338,7 @@ def healthz() -> Dict[str, Any]:
 
 
 @app.get("/v1/models")
-def list_models() -> Dict[str, Any]:
+def list_models() -> dict[str, Any]:
     rows = _refresh_models()
     return {"object": "list", "data": rows}
 
@@ -348,7 +348,7 @@ def list_models() -> Dict[str, Any]:
 # the /v1 prefix when given a base URL. Registering the bare paths as
 # aliases avoids 404s.
 @app.get("/models")
-def list_models_alias() -> Dict[str, Any]:
+def list_models_alias() -> dict[str, Any]:
     return list_models()
 
 
@@ -412,7 +412,7 @@ async def chat_completions(req: ChatCompletionsRequest, request: Request) -> Any
     try:
         prov = resolve_provider(provider_name, env)
     except KeyError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     api_key = env.get(prov.env_key_var or "", "").strip() if prov.env_key_var else ""
     if not api_key and prov.name not in ("lmstudio", "ollama"):
@@ -435,7 +435,7 @@ async def chat_completions(req: ChatCompletionsRequest, request: Request) -> Any
     # Fall back to the parsed model if the raw body isn't a valid JSON object
     # with a `messages` key (this happens when chat_completions is invoked
     # internally by the legacy /v1/completions shim).
-    upstream_messages: List[Dict[str, Any]] = []
+    upstream_messages: list[dict[str, Any]] = []
     try:
         raw_body_obj = json.loads(body_bytes) if body_bytes else None
         if isinstance(raw_body_obj, dict):
@@ -531,21 +531,21 @@ async def _err_chunk_streaming(
 
 async def _call_anthropic(
     prov, api_key, model, messages, req: ChatCompletionsRequest
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     url = f"{prov.base_url}/v1/messages"
     headers = {
         "Content-Type": "application/json",
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
     }
-    out_msgs: List[Dict[str, str]] = []
-    sys_block: Optional[str] = None
+    out_msgs: list[dict[str, str]] = []
+    sys_block: str | None = None
     for m in messages:
         if m["role"] == "system":
             sys_block = m["content"]
         else:
             out_msgs.append(m)
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": model,
         "max_tokens": req.max_tokens or DEFAULT_MAX_TOKENS,
         "messages": out_msgs,
@@ -562,12 +562,12 @@ async def _call_anthropic(
                 status_code=503,
                 detail=f"anthropic unreachable at {prov.base_url}: {str(e)[:200]}. "
                        "Is the anthropic server running?",
-            )
+            ) from e
         except httpx.TimeoutException as e:
             raise HTTPException(
                 status_code=504,
                 detail=f"anthropic timed out: {str(e)[:200]}",
-            )
+            ) from e
     if r.status_code in (401, 403):
         raise HTTPException(status_code=401, detail=f"anthropic auth: {r.text[:200]}")
     if r.status_code >= 400:
@@ -605,14 +605,14 @@ async def _stream_anthropic(
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
     }
-    out_msgs: List[Dict[str, str]] = []
-    sys_block: Optional[str] = None
+    out_msgs: list[dict[str, str]] = []
+    sys_block: str | None = None
     for m in messages:
         if m["role"] == "system":
             sys_block = m["content"]
         else:
             out_msgs.append(m)
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": model,
         "max_tokens": req.max_tokens or DEFAULT_MAX_TOKENS,
         "messages": out_msgs,
@@ -627,8 +627,8 @@ async def _stream_anthropic(
     created = int(time.time())
     filter_state = ReasoningFilter()
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as r:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client, \
+                client.stream("POST", url, headers=headers, json=payload) as r:
                 log.info("UPSTREAM %s -> %d (stream)", prov.name, r.status_code)
                 if r.status_code >= 400:
                     body = await r.aread()
@@ -714,12 +714,12 @@ async def _stream_anthropic(
 
 async def _call_openai_compat(
     prov, api_key, model, messages, req: ChatCompletionsRequest
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     url = f"{prov.base_url}/chat/completions"
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload: Dict[str, Any] = {"model": model, "messages": messages}
+    payload: dict[str, Any] = {"model": model, "messages": messages}
     if req.temperature is not None:
         payload["temperature"] = req.temperature
     if req.max_tokens is not None:
@@ -759,12 +759,12 @@ async def _call_openai_compat(
                 status_code=503,
                 detail=f"{prov.name} unreachable at {prov.base_url}: {str(e)[:200]}. "
                        f"Is the {prov.name} server running?",
-            )
+            ) from e
         except httpx.TimeoutException as e:
             raise HTTPException(
                 status_code=504,
                 detail=f"{prov.name} timed out: {str(e)[:200]}",
-            )
+            ) from e
     log.info("UPSTREAM %s -> %d", prov.name, r.status_code)
     if r.status_code in (401, 403):
         raise HTTPException(status_code=401, detail=f"{prov.name} auth: {r.text[:200]}")
@@ -796,7 +796,7 @@ async def _stream_openai_compat(
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    payload: Dict[str, Any] = {"model": model, "messages": messages, "stream": True}
+    payload: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
     if req.temperature is not None:
         payload["temperature"] = req.temperature
     if req.max_tokens is not None:
@@ -833,8 +833,8 @@ async def _stream_openai_compat(
     created = int(time.time())
     filter_state = ReasoningFilter()
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as r:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client, \
+                client.stream("POST", url, headers=headers, json=payload) as r:
                 log.info("UPSTREAM %s -> %d (stream)", prov.name, r.status_code)
                 if r.status_code >= 400:
                     body = await r.aread()

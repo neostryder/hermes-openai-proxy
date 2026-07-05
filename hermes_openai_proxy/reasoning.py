@@ -30,7 +30,6 @@ for full text.
 from __future__ import annotations
 
 import re
-from typing import List, Optional
 
 # Tag names that some providers (MiniMax, Anthropic thinking, DeepSeek,
 # Qwen, GLM thinking, Kimi k2) use to inline reasoning inside the same
@@ -97,7 +96,7 @@ class ReasoningFilter:
             return ""
         self._buffer += chunk
 
-        emitted: List[str] = []
+        emitted: list[str] = []
 
         # Drain as much of the buffer as possible, in order:
         #   1. If we're in reasoning mode, look for the next CLOSE.

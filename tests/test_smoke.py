@@ -9,10 +9,7 @@ Then run the tests. Most tests just hit /v1/models (doesn't call any
 provider). One test does a real chat completion if MINIMAX_API_KEY is set.
 """
 
-import json
 import os
-import sys
-from pathlib import Path
 
 import httpx
 

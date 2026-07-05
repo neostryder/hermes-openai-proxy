@@ -79,6 +79,28 @@ def install_service(args):
       macOS:    launchd LaunchAgent (no admin needed; user-context).
       Linux:    systemd --user (no admin needed).
     """
+    # Verify the package is importable in the python interpreter that
+    # would actually run the service. Catches the common failure mode
+    # where the user runs --install from a venv without the package
+    # installed, or runs it against the system python while the package
+    # is in a user-site venv. Without this check, we'd register a
+    # launchd plist / NSSM service / systemd unit that points at a
+    # python interpreter that can't import hermes_openai_proxy, and
+    # the service would silently fail to start on next boot.
+    try:
+        import hermes_openai_proxy  # noqa: F401
+    except ImportError as e:
+        print(
+            f"ERROR: hermes_openai_proxy is not importable in this "
+            f"python interpreter ({sys.executable}): {e}\n"
+            f"Install it first with:\n"
+            f"  {sys.executable} -m pip install "
+            f"git+https://github.com/neostryder/hermes-openai-proxy.git\n"
+            f"Then re-run --install.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     system = platform.system()
     if system == "Windows":
         nssm_ok = _try_install_windows_nssm(args)
@@ -164,11 +186,10 @@ def _try_install_windows_nssm(args) -> bool:
     except subprocess.CalledProcessError as e:
         print(f"NSSM install failed: {e}", file=sys.stderr)
         # Clean up the half-installed service so it doesn't linger.
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             subprocess.run(["sc", "delete", service_name],
                            capture_output=True, timeout=10)
-        except Exception:
-            pass
         return False
     except FileNotFoundError as e:
         print(f"NSSM not available: {e}", file=sys.stderr)
@@ -215,7 +236,7 @@ def _install_windows_taskscheduler(args):
         )
         winreg.SetValueEx(key, "HermesOpenAIProxy", 0, winreg.REG_SZ, tr)
         key.Close()
-        print(f"Registry Run entry added. Will run at next logon.")
+        print("Registry Run entry added. Will run at next logon.")
         # Start now
         import subprocess as sp
         sp.Popen([py, "-m", "hermes_openai_proxy",
@@ -261,7 +282,7 @@ def _status_windows():
     if r.returncode == 0 and "RUNNING" in r.stdout:
         print("NSSM service: RUNNING")
     elif r.returncode == 0:
-        print(f"NSSM service: installed but not running")
+        print("NSSM service: installed but not running")
     else:
         print("NSSM service: not installed")
     r2 = subprocess.run(["schtasks", "/Query", "/TN", "HermesOpenAIProxy"],
