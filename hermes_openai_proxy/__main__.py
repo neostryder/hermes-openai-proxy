@@ -54,8 +54,22 @@ def parse_args(argv=None):
     p.add_argument("--status", action="store_true",
                    help="Report service mechanism, PID, port, recent log lines.")
     p.add_argument("--tray", action="store_true",
-                   help="Run a system-tray / menu-bar icon alongside the server. "
-                        "Requires the [tray] optional deps.")
+                   help="Run the system-tray / menu-bar icon only. "
+                        "Connects to an already-running proxy on --host:port; "
+                        "if no proxy is found, prints a hint to run --install "
+                        "first. Combine with --start-proxy to also start the "
+                        "server in-process when nothing is listening.")
+    p.add_argument("--start-proxy", action="store_true",
+                   help="When --tray is set and no proxy is running on "
+                        "--host:port, start one in this process before "
+                        "opening the tray.")
+    p.add_argument("--tray-autostart", action="store_true",
+                   help="Register the tray icon to start at user logon "
+                        "(Windows: HKCU Run key; macOS: LaunchAgent; "
+                        "Linux: systemd --user). Idempotent.")
+    p.add_argument("--tray-stop-autostart", action="store_true",
+                   help="Remove the autostart registration. The tray will "
+                        "still work if you launch it manually with --tray.")
     p.add_argument("--no-tray", action="store_true",
                    help="Disable the tray icon even if --tray is the default "
                         "(HERMES_TRAY env var or env-controlled CI).")
@@ -143,7 +157,78 @@ def main(argv=None):
         return service_mod.upgrade(args)
     if args.status:
         return service_mod.status(args)
+    if args.tray_autostart:
+        return service_mod.tray_autostart(args, enable=True)
+    if args.tray_stop_autostart:
+        return service_mod.tray_autostart(args, enable=False)
+
+    if args.tray:
+        # --tray alone: connect to an existing proxy; start one in this
+        # process if --start-proxy is set AND nothing is listening.
+        return _run_tray(args)
+
     return run_server(args)
+
+
+def _run_tray(args) -> int:
+    """Spawn the platform tray icon.
+
+    Default behavior: connect to the proxy already listening on
+    args.host:args.port. If nothing is listening, error out with a
+    hint unless --start-proxy was passed.
+    """
+    if _health_ok(args.host, args.port, timeout=1.5):
+        from . import _tray
+        _tray.run(args.host, args.port, __version__)
+        return 0
+
+    if args.start_proxy:
+        # No proxy running. Start one in this process in a worker
+        # thread, wait for /healthz to respond, then open the tray.
+        # The tray will close the proxy when it exits (it doesn't,
+        # actually -- the tray quits cleanly and leaves the in-process
+        # proxy alive until the user Ctrl-C's this terminal).
+        import threading
+
+        from . import _tray
+
+        def _serve():
+            run_server(args)
+        t = threading.Thread(target=_serve, daemon=True,
+                             name="proxy-in-tray")
+        t.start()
+        # Wait up to 10 s for the server to come up.
+        import time
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if _health_ok(args.host, args.port, timeout=1.0):
+                break
+            time.sleep(0.2)
+        else:
+            print("Failed to start proxy in 10s; tray not opening.",
+                  file=sys.stderr)
+            return 1
+        _tray.run(args.host, args.port, __version__)
+        return 0
+
+    print(f"No proxy listening on http://{args.host}:{args.port}.",
+          file=sys.stderr)
+    print("Run --install first to register the proxy as a service,",
+          file=sys.stderr)
+    print("or use --tray --start-proxy to launch a foreground proxy",
+          file=sys.stderr)
+    print("alongside the tray in this terminal.", file=sys.stderr)
+    return 1
+
+
+def _health_ok(host: str, port: int, timeout: float = 1.5) -> bool:
+    """Lightweight liveness probe used by --tray and friends."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 if __name__ == "__main__":

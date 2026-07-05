@@ -5,6 +5,49 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0a3] - 2026-07-05
+
+### Added
+
+- **`--tray-autostart` / `--tray-stop-autostart`**: register (or
+  remove) the tray icon at user logon. The registered command runs
+  `--tray` only -- it connects to an existing proxy, never starts
+  a second one. Cross-platform:
+    - **Windows**: HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+      key `HermesOpenAIProxy.Tray`.
+    - **macOS**: LaunchAgent
+      `~/Library/LaunchAgents/com.hermes.openai-proxy.tray.plist`
+      with `RunAtLoad=true` and `ProcessType=Interactive` so the
+      tray lives in the user's Aqua session.
+    - **Linux**: systemd --user unit
+      `hermes-openai-proxy.tray.service`, installed via
+      `systemctl --user enable --now`. **Linux: untested end-to-end.**
+- **`--tray` semantic change**: `--tray` alone no longer tries to
+  start a second proxy. It connects to an existing proxy on
+  `--host:port` and errors out with a clear hint if nothing is
+  listening. New `--start-proxy` flag pairs with `--tray` to start
+  a foreground proxy alongside the tray in the same terminal
+  (handy for development; production users run the proxy via
+  `--install` and just `--tray` for the icon).
+
+### Fixed
+
+- **`--tray` second-proxy collision**. Previously, `--tray` would
+  take the single-instance lock and EADDRINUSE-fail with
+  exit code 78 against a service-installed proxy, leaving the user
+  no clear path to get an icon. Now `--tray` is a pure client of
+  the proxy; the lock is not consulted.
+
+### Changed
+
+- The README "Verified on" table gains a row noting that the tray
+  is opt-in (never auto-starts with the service). Recommend running
+  `python -m hermes_openai_proxy --tray-autostart` once after
+  `--install` to register the tray for logon.
+
+[Unreleased]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a3...HEAD
+[0.2.0a3]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a2...v0.2.0a3
+
 ## [0.2.0a2] - 2026-07-05
 
 ### Added

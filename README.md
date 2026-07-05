@@ -262,6 +262,21 @@ backend, but the Linux test base is empty -- see "Verified on" above.
 The tray is **opt-in** and never auto-starts with the service. Run it
 from a desktop session; it requires a graphical display.
 
+To make the tray appear automatically after every login, register it
+once with `--tray-autostart` (idempotent):
+
+```bash
+python -m hermes_openai_proxy --tray-autostart     # register
+python -m hermes_openai_proxy --tray-stop-autostart  # remove
+```
+
+On Windows this writes a `HermesOpenAIProxy.Tray` value under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. On macOS it
+writes a `com.hermes.openai-proxy.tray` LaunchAgent plist with
+`RunAtLoad=true` and `ProcessType=Interactive`. On Linux (untested
+end-to-end) it writes a `hermes-openai-proxy.tray.service` systemd
+--user unit and runs `systemctl --user enable --now`.
+
 ## Development
 
 ```bash

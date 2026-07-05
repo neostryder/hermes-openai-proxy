@@ -177,6 +177,165 @@ def status(args) -> int:
     return _status_linux()
 
 
+def tray_autostart(args, *, enable: bool) -> int:
+    """Register (enable=True) or unregister (enable=False) the tray
+    icon at user logon.
+
+    On Windows: writes HKCU\\...\\Run key.
+    On macOS: writes ~/Library/LaunchAgents/com.hermes.openai-proxy.tray.plist.
+    On Linux: writes ~/.config/systemd/user/hermes-openai-proxy.tray.service.
+
+    Idempotent: re-running with the same state is a no-op.
+    """
+    cfg = _read_service_config()
+    if not cfg:
+        print("No prior --install detected. Run --install first.", file=sys.stderr)
+        return 2
+    pk = platform_key()
+    if pk == "windows":
+        return _tray_autostart_windows(cfg, enable)
+    if pk == "macos":
+        return _tray_autostart_macos(cfg, enable)
+    return _tray_autostart_linux(cfg, enable)
+
+
+def _tray_autostart_windows(cfg, enable: bool) -> int:
+    """HKCU Run key for the tray. The registered command runs
+    `--tray` (which connects to an existing proxy) so the tray never
+    starts a second proxy."""
+    label = service_label_windows() + ".Tray"
+    import winreg
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY,
+        )
+    except FileNotFoundError:
+        if not enable:
+            print("Tray autostart is not registered (nothing to remove).")
+            return 0
+        key = winreg.CreateKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+        )
+    cmd = (
+        f'"{cfg["python"]}" -m hermes_openai_proxy '
+        f'--host {cfg["host"]} --port {cfg["port"]} --tray'
+    )
+    try:
+        if enable:
+            winreg.SetValueEx(key, label, 0, winreg.REG_SZ, cmd)
+            print(f"Registered tray at logon (HKCU\\...\\Run\\{label}).")
+            print(f"  command: {cmd}")
+        else:
+            try:
+                winreg.DeleteValue(key, label)
+                print(f"Removed tray autostart (HKCU\\...\\Run\\{label}).")
+            except FileNotFoundError:
+                print("Tray autostart was not registered (nothing to remove).")
+    finally:
+        winreg.CloseKey(key)
+    return 0
+
+
+def _tray_autostart_macos(cfg, *, enable: bool) -> int:
+    """macOS LaunchAgent for the tray. RunAtLoad launches the tray
+    after user login; Aqua session is automatic from the user context."""
+    from pathlib import Path
+    plist_path = (Path.home() / "Library" / "LaunchAgents"
+                  / "com.hermes.openai-proxy.tray.plist")
+    label = "com.hermes.openai-proxy.tray"
+    if not enable:
+        if plist_path.exists():
+            subprocess.run(["launchctl", "unload", str(plist_path)],
+                           capture_output=True)
+            plist_path.unlink()
+            print(f"Removed {plist_path}")
+        else:
+            print("Tray autostart is not registered (nothing to remove).")
+        return 0
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{label}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{cfg["python"]}</string>
+        <string>-m</string>
+        <string>hermes_openai_proxy</string>
+        <string>--host</string>
+        <string>{cfg["host"]}</string>
+        <string>--port</string>
+        <string>{cfg["port"]}</string>
+        <string>--tray</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+"""
+    plist_path.write_text(plist)
+    r = subprocess.run(["launchctl", "load", str(plist_path)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"launchctl load failed: {r.stderr}", file=sys.stderr)
+        return r.returncode
+    print(f"Registered tray at logon: {plist_path}")
+    return 0
+
+
+def _tray_autostart_linux(cfg, *, enable: bool) -> int:
+    """systemd --user unit for the tray. Linux: untested end-to-end;
+    the unit file is shipped and follows the Linux conventions
+    documented in install code's Linux section."""
+    from pathlib import Path
+    unit_path = (Path.home() / ".config" / "systemd" / "user"
+                 / "hermes-openai-proxy.tray.service")
+    if not enable:
+        if unit_path.exists():
+            subprocess.run(
+                ["systemctl", "--user", "disable", "--now",
+                 "hermes-openai-proxy.tray.service"],
+                capture_output=True,
+            )
+            unit_path.unlink()
+            print(f"Removed {unit_path}")
+        else:
+            print("Tray autostart is not registered (nothing to remove).")
+        return 0
+    unit_path.parent.mkdir(parents=True, exist_ok=True)
+    unit = f"""[Unit]
+Description=hermes-openai-proxy tray icon
+After=network-online.target hermes-openai-proxy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={cfg["python"]} -m hermes_openai_proxy --host {cfg["host"]} --port {cfg["port"]} --tray
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+    unit_path.write_text(unit)
+    subprocess.run(
+        ["systemctl", "--user", "enable", "--now",
+         "hermes-openai-proxy.tray.service"],
+        capture_output=True,
+    )
+    print(f"Registered tray at logon: {unit_path}")
+    return 0
+
+
 def upgrade(args) -> int:
     """pip-install --upgrade and restart the service.
 
