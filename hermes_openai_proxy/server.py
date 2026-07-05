@@ -921,6 +921,14 @@ async def _stream_openai_compat(
                                 "finish_reason": ch.get("finish_reason"),
                             })
                             emitted_any = True
+                        # Track finish_reason even when content also came through in
+                        # this same chunk. Some upstreams (notably MiniMax M3/M2.7
+                        # streaming) emit a single chunk containing BOTH `delta.content`
+                        # AND `choices[0].finish_reason: "stop"`; without this,
+                        # saw_finish_reason would stay False and we'd never
+                        # synthesize the [DONE] terminator on line 944, leaving
+                        # well-behaved clients (curl, OpenAI SDK) hanging.
+                        if ch.get("finish_reason"):
                             saw_finish_reason = True
                     if emitted_any:
                         ev["choices"] = new_choices
