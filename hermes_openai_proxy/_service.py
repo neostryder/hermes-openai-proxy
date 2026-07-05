@@ -195,8 +195,8 @@ def tray_autostart(args, *, enable: bool) -> int:
     if pk == "windows":
         return _tray_autostart_windows(cfg, enable)
     if pk == "macos":
-        return _tray_autostart_macos(cfg, enable)
-    return _tray_autostart_linux(cfg, enable)
+        return _tray_autostart_macos(cfg, enable=enable)
+    return _tray_autostart_linux(cfg, enable=enable)
 
 
 def _tray_autostart_windows(cfg, enable: bool) -> int:
