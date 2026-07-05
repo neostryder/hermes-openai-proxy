@@ -13,4 +13,4 @@ USER.md, or any persona/skills context. Whatever you send in is what the
 model sees.
 """
 
-__version__ = "0.2.0a3"
+__version__ = "0.2.0a4"

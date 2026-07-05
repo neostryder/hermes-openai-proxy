@@ -381,8 +381,11 @@ def upgrade(args) -> int:
     print(f"Upgraded to v{new_version}.")
     print(f"Restarting service ({cfg['mechanism']})...")
     _restart_registered(cfg)
-    # Health-check
-    deadline = time.time() + 10
+    # Health-check. First start can take ~15-25s on Windows (uvicorn
+    # cold start, plus Windows Defender AV scan of freshly-loaded
+    # DLLs). 30s budget covers the worst case without masking real
+    # failures.
+    deadline = time.time() + 30
     while time.time() < deadline:
         if _health_ok(cfg["host"], cfg["port"], timeout=1.5):
             print("Restart OK. /healthz responding.")
@@ -391,7 +394,7 @@ def upgrade(args) -> int:
                                    "installed_at": datetime.datetime.utcnow().isoformat() + "Z"})
             return 0
         time.sleep(0.5)
-    print("Service did not come back within 10s. Check the stderr log:")
+    print("Service did not come back within 30s. Check the stderr log:")
     print(f"  {stderr_log_path()}")
     return 1
 
@@ -470,7 +473,14 @@ def _port_precheck(host: str, port: int) -> None:
 def _health_ok(host: str, port: int, timeout: float = 2.0) -> bool:
     """Quick TCP-level health check. Does NOT parse the response; just
     confirms the kernel will accept() on the port. Faster than HTTP
-    and doesn't fail on a proxy that's listening but mid-startup."""
+    and doesn't fail on a proxy that's listening but mid-startup.
+
+    Note: `0.0.0.0` is a wildcard BIND address, not a valid connect
+    target. When we recorded 0.0.0.0 in service.json (the install
+    default) the post-restart health probe must normalize to
+    127.0.0.1 or it will fail forever."""
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
     try:
@@ -554,18 +564,63 @@ def _restart_registered(cfg: dict[str, Any]) -> None:
             ["schtasks", "/Run", "/TN", label], capture_output=True
         )
     elif mech == "hkcu_run":
-        # Spawn truly detached: no console window, no parent shell.
-        # See the constant definition above for why CREATE_NO_WINDOW
-        # alone is not enough.
+        # HKCU Run fires only at user logon, so to restart we:
+        #   1. Kill any python.exe whose CommandLine matches this
+        #      proxy's host:port (the currently-running instance).
+        #   2. Wait for the port to actually free up.
+        #   3. Spawn a new detached python with --host --port.
         import subprocess as sp
+        host, port = cfg["host"], cfg["port"]
+        # PowerShell filter: match our proxy's host:port string in
+        # the command line. Both `python.exe -m hermes_openai_proxy`
+        # and the inner `cpython-3.11...` python are matched.
+        ps_filter = (
+            f"Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+            f"| Where-Object {{ $_.CommandLine -like '*hermes_openai_proxy*' "
+            f"-and $_.CommandLine -like '*{host}*' "
+            f"-and $_.CommandLine -like '*{port}*' }} "
+            f"| ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force "
+            f"-ErrorAction SilentlyContinue }}"
+        )
+        sp.run(["powershell", "-NoProfile", "-Command", ps_filter],
+               capture_output=True)
+        # Wait for the port to actually free up. max 10s.
+        import socket as _socket
+        import time
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                with _socket.create_connection((host, int(port)), timeout=0.5):
+                    time.sleep(0.3)
+            except OSError:
+                break  # port free
+        else:
+            # Port still bound after 10s; bail out so the operator
+            # sees a clean error rather than a phantom restart.
+            raise RuntimeError(
+                f"port {port} still bound 10s after kill; "
+                f"manual intervention required"
+            )
         py = cfg["python"]
+        # Open log files (append, line-buffered) for stdout + stderr.
+        # DEVNULL would be simpler but leaves the operator blind when
+        # the service fails to come back. File handles ensure logs
+        # survive even if Path.home() is on a slow drive.
+        # We use contextlib.suppress to ignore any close-time errors
+        # so a transient handle issue doesn't kill the daemon spawn.
+
+        from .service_paths import stderr_log_path, stdout_log_path
+        out_log = open(stdout_log_path(), "ab", buffering=0)  # noqa: SIM115
+        err_log = open(stderr_log_path(), "ab", buffering=0)  # noqa: SIM115
+        # Don't close these handles -- they must outlive the parent
+        # subprocess so logs keep flowing after the upgrade finishes.
         sp.Popen(
             [py, "-m", "hermes_openai_proxy",
-             "--host", cfg["host"], "--port", str(cfg["port"])],
+             "--host", host, "--port", str(port)],
             creationflags=_WIN_DETACHED_NO_WINDOW,
             stdin=sp.DEVNULL,
-            stdout=sp.DEVNULL,
-            stderr=sp.DEVNULL,
+            stdout=out_log,
+            stderr=err_log,
             close_fds=True,
         )
     # else: unknown mechanism -- try nothing, the caller's health check will fail.

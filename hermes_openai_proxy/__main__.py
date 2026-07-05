@@ -222,7 +222,13 @@ def _run_tray(args) -> int:
 
 
 def _health_ok(host: str, port: int, timeout: float = 1.5) -> bool:
-    """Lightweight liveness probe used by --tray and friends."""
+    """Lightweight liveness probe used by --tray and friends.
+
+    `0.0.0.0` is a wildcard BIND address, not a valid connect target.
+    Normalize to 127.0.0.1 so the probe succeeds against a service
+    installed with the default `--host 0.0.0.0`."""
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
     import socket
     try:
         with socket.create_connection((host, port), timeout=timeout):

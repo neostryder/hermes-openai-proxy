@@ -5,6 +5,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0a4] - 2026-07-05
+
+### Fixed
+
+- **HKCU-Run `--upgrade` restart path actually works now.** Three
+  bugs combined to make `--upgrade` after the first install fail
+  silently:
+    1. The new python subprocess was spawned, but the OLD python
+       still held the single-instance lock and the port, so the new
+       one could never bind. Now the restart path kills the existing
+       HKCU-Run python first (PowerShell + CIM filter on the proxy's
+       host:port string), waits for the port to free up, and only
+       then spawns the new one.
+    2. `_health_ok()` was probing `cfg["host"]:cfg["port"]`, which
+       is `0.0.0.0:8765` by default. `0.0.0.0` is a wildcard BIND
+       address, not a valid connect target, so the probe failed
+       forever even though the proxy was up. Normalize to `127.0.0.1`
+       for the probe. Same fix applied to `_main.py`'s probe.
+    3. HKCU-Run was sending stdout/stderr to DEVNULL, so when the
+       health probe timed out the operator had no log to inspect.
+       Now logs land at `~/hermes-openai-proxy.log` and
+       `~/hermes-openai-proxy.err.log` (append, line-buffered),
+       matching the macOS/Linux install behavior.
+- **Cold-start timeout raised from 10s to 30s** for the post-restart
+  health check. On Windows, uvicorn cold-start + Defender AV scan
+  of freshly-loaded DLLs takes 15-25s in practice; the previous 10s
+  budget flagged every upgrade as a failure even when the proxy
+  came back correctly.
+
+### Verified
+
+- Eru (Windows 10): `--upgrade` cleanly cycles the HKCU-Run proxy
+  with `Restart OK. /healthz responding.`. Logs land in
+  `~/hermes-openai-proxy.*.log`.
+- gamemaster (macOS): `--upgrade` cleanly unload/load the
+  LaunchAgent; same end-to-end result.
+
+[Unreleased]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a4...HEAD
+[0.2.0a4]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a3...v0.2.0a4
+
 ## [0.2.0a3] - 2026-07-05
 
 ### Added
