@@ -5,6 +5,60 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0a2] - 2026-07-05
+
+### Added
+
+- **Tray icon with management menus** (Windows + macOS, opt-in via
+  `pip install 'hermes-openai-proxy[tray]'` + `python -m hermes_openai_proxy
+  --tray`). The icon stays in the system tray / menu bar; the menu
+  exposes:
+    - Header with version and listening address
+    - Live status line (refreshed every 5 s; first render after a
+      synchronous probe so the menu never shows "checking...")
+    - **Open /healthz in browser**
+    - **Open logs folder** (reveals the proxy log directory in the
+      OS file manager)
+    - **Copy base URL to clipboard** (pbcopy on macOS, clip.exe on
+      Windows, xclip/xsel on Linux)
+    - **Restart proxy** (runs `python -m hermes_openai_proxy
+      --upgrade` in a worker thread, returns immediately to the
+      tray)
+    - **Stop proxy** (Windows: stops the NSSM service OR kills the
+      HKCU-Run python via CIM; macOS: launchctl unload; Linux:
+      systemctl --user stop). The service registration stays intact.
+    - **Uninstall proxy** (full removal: plist / sc / systemd + log
+      files left to user)
+    - **Quit tray** (closes the menu-bar icon but leaves the proxy
+      running)
+  Linux ships the same UI via pystray (status-notifier-item over DBus)
+  but is **untested** end-to-end -- the tray code path is the same
+  on Windows + Linux, but the Linux test base is still empty.
+
+### Changed
+
+- **Tray icon: dynamic status text** via `MenuItem(text=callable)`
+  rather than rebuilding the menu on every poll. pystray re-evaluates
+  the callable on every menu render, so the status line is always
+  live without thread-marshalling overhead.
+- **README** gains a "Verified on" table that explicitly lists
+  Windows 10 and macOS 16 Tahoe as tested, and Linux as
+  implemented-but-untested. The `Linux: untested` banner is also in
+  the install code's docstring and is the source of truth for the
+  status.
+
+### Notes
+
+- The `--tray` flag is **opt-in**: it never auto-starts with the
+  service. To get the tray icon after `--install`, run
+  `python -m hermes_openai_proxy --tray` from a desktop session
+  (it's a GUI app; it can't run inside a headless service).
+- pystray + rumps + Pillow + (cairosvg on macOS/Linux) live in the
+  `tray` optional group; the proxy stays headless without them.
+
+[Unreleased]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a2...HEAD
+[0.2.0a2]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a1...v0.2.0a2
+
 ## [0.2.0a1] - 2026-07-05
 
 ### Added
@@ -74,8 +128,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   macOS 16 Tahoe (gamemaster, rpgm; launchd + logrotate plist).
 - **Not tested**: Linux. The `systemd --user` unit is implemented
   and uses `enable-linger` for headless operation, but lacks
-  end-to-end field use until Nate runs it. The `Linux: untested`
-  warning is explicit in the install code's docstring.
+  end-to-end field use. The `Linux: untested` warning is explicit in
+  the install code's docstring and in the README "Verified on" table;
+  a CI test on a Linux VM is tracked as a follow-up.
 
 [Unreleased]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.2.0a1...HEAD
 [0.2.0a1]: https://github.com/neostryder/hermes-openai-proxy/compare/v0.1.0...v0.2.0a1

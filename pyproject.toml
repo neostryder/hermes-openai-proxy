@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-openai-proxy"
-version = "0.2.0a1"
+version = "0.2.0a2"
 description = "OpenAI-compatible HTTP API proxy that exposes your Hermes credentials to any OpenAI-compatible client (Brave Leo BYOM, GitHub Copilot, Continue, Cline, Aider, etc.) without leaking Hermes context."
 readme = "README.md"
 license = { text = "MIT" }

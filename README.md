@@ -220,21 +220,47 @@ python -m hermes_openai_proxy --uninstall
 Logs land in `~/hermes-openai-proxy.log` and `~/hermes-openai-proxy.err.log`
 on all platforms.
 
+### Verified on
+
+| Platform | Mechanism | Status |
+|---|---|---|
+| Windows 10 | NSSM service (admin) / Task Scheduler (no admin) / HKCU Run (last-resort) | Tested end-to-end |
+| macOS 16 Tahoe | launchd LaunchAgent + companion logrotate LaunchAgent | Tested end-to-end |
+| Linux (systemd --user) | systemd user unit + `loginctl enable-linger` | Implemented, **untested** -- flag honest until a Linux CI job or user verifies |
+
+On "untested": the Linux code path is shipped because Hermes ships
+on Linux too, but no automated or manual end-to-end run has been
+performed. Expect a `Linux: untested` banner in the install docstring
+until a CI matrix on a Linux VM validates the systemd path.
+
 ## Security
 
 The proxy binds to `0.0.0.0:8765` by default and does **not** require
 authentication. This is intentional for trusted LAN / Tailscale use.
 **Do NOT expose this to the public internet.** Either:
 
-- Bind to a specific interface: `--host 192.168.1.10` or
-  `--host 100.x.y.z` (Tailscale).
-- Set up a firewall rule (Windows Defender / iptables / pf).
-- Run behind Tailscale ACLs.
+- Bind to localhost with `--host 127.0.0.1` (default for BYOM clients
+  on the same machine).
+- Restrict via firewall (e.g., Windows Defender Firewall with
+  Advanced Security, `pf` on macOS, `ufw` on Linux).
 
-If you need bearer-token auth, the extension point is in
-`server.py`: add a FastAPI dependency that checks
-`Authorization: Bearer *** against an env var, then attach it to
-the `chat_completions` route. PRs welcome.
+## Optional: System Tray / Menu Bar icon
+
+For a tray icon with management menus (Restart / Stop / Open logs /
+Open /healthz / Quit), install the optional `tray` extras and run
+with `--tray`:
+
+```bash
+pip install "hermes-openai-proxy[tray]"
+python -m hermes_openai_proxy --tray
+```
+
+The icon stays in the system tray (Windows) or menu bar (macOS).
+On Linux the same code path runs via pystray's status-notifier-item
+backend, but the Linux test base is empty -- see "Verified on" above.
+
+The tray is **opt-in** and never auto-starts with the service. Run it
+from a desktop session; it requires a graphical display.
 
 ## Development
 
