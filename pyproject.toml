@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-openai-proxy"
-version = "0.1.0"
+version = "0.2.0a1"
 description = "OpenAI-compatible HTTP API proxy that exposes your Hermes credentials to any OpenAI-compatible client (Brave Leo BYOM, GitHub Copilot, Continue, Cline, Aider, etc.) without leaking Hermes context."
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,7 +18,9 @@ classifiers = [
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -32,6 +34,7 @@ dependencies = [
     "httpx>=0.27",
     "pyyaml>=6.0",
     "pydantic>=2.5",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +42,19 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
+]
+# System-tray / menu-bar icon. Optional: the proxy runs headless without
+# these; install this group to enable --tray.
+tray = [
+    "pystray>=0.19",
+    "Pillow>=10.0",
+    # macOS menu-bar icon (rumps).
+    "rumps>=0.4 ; sys_platform == 'darwin'",
+    # Linux SVG -> PNG (Windows ships icon assets in the system image formats).
+    "cairosvg>=2.5 ; sys_platform == 'linux'",
+    # Linux AppIndicator via D-Bus (for pystray's StatusNotifierItem backend).
+    "PyGObject>=3.42 ; sys_platform == 'linux'",
+    "dbus-python>=1.3 ; sys_platform == 'linux'",
 ]
 
 [project.urls]
