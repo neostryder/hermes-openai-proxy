@@ -1,0 +1,53 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ruff / mypy
+.ruff_cache/
+.mypy_cache/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local configuration overrides
+.env
+.env.local
+.env.*.local
+
+# Diagnostic body dumps (set HERMES_PROXY_DEBUG_BODIES=1 to generate these)
+debug-bodies/
+
+# Service installer logs
+hermes-openai-proxy.log
+hermes-openai-proxy.err.log
+*.service.log
+*.service.err.log
+
+# Personal notes -- keep machine-specific operator notes out of the repo.
+# Examples: which model you actually use, which BYOM client setup quirks
+# you've hit, your local IP, your Tailscale magic IP, etc.
+docs/personal/
+local-notes/

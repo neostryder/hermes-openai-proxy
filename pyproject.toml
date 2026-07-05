@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-openai-proxy"
+version = "0.1.0"
+description = "OpenAI-compatible HTTP API proxy that exposes your Hermes credentials to any OpenAI-compatible client (Brave Leo BYOM, GitHub Copilot, Continue, Cline, Aider, etc.) without leaking Hermes context."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["openai", "hermes", "byom", "proxy", "llm", "api", "brave-leo"]
+authors = [
+    { name = "Hermes-Agent contributors" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/neostryder/hermes-openai-proxy"
+Issues = "https://github.com/neostryder/hermes-openai-proxy/issues"
+Source = "https://github.com/neostryder/hermes-openai-proxy"
+
+[project.scripts]
+hermes-openai-proxy = "hermes_openai_proxy.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["hermes_openai_proxy*"]
+
+[tool.setuptools.package-data]
+hermes_openai_proxy = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]

@@ -1,0 +1,19 @@
+# Development dependencies for hermes-openai-proxy.
+#
+# Install with:
+#   pip install -r requirements-dev.txt
+#
+# Or use the optional extras:
+#   pip install -e ".[dev]"
+
+-r requirements.txt
+
+# Testing
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# Linting / formatting
+ruff>=0.5
+
+# Type checking (optional but recommended)
+mypy>=1.10
